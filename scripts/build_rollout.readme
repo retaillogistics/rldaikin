@@ -1,0 +1,158 @@
+build_rollout.pl
+
+Copyright 2001,2003 
+RedPrairie
+All Rights Reserved
+
+This script is used to automatically create a "package-able" directory of 
+files deployable in a customer environment.  The script works closely with 
+GNATS and CVS to obtain the files affected by a PR and to auto-generate
+a script that works with rollout.pl to install those files in another
+environment.
+
+----- Arguments -----
+
+-A -- Application Build Mode
+        Opationl (default is WMD).  WMD for Discrete, WMP for Process.
+-h -- HELP
+        Optional.  Shows the usage information.
+-n -- NO TAG
+        Optional.  Required when used with -r <rollout number>.  
+        Will not go through GNATS to determine affected objects.
+        Rather, it will do an extract directly from CVS based on the PR number
+        that was passed in.  NOTE, the tag will actually be PR-<pr number> since
+        CVS requires that a tag name start with a character rather than a digit.
+-d <cvsroot> -- CVS ROOT
+        Required.  This parameter defines where the CVS tree is located for
+        exporting the files that will be patched.  An example is 
+        "homebrew:/cvs/main" or ":pserver:homebrew:/cvs/main".  Note: PSERVER
+        access is faster!
+-m <module> -- MODULE
+        Required.  This parameter defines the module under the CVS root where 
+        the files are kept.  This will typically be the project name.
+-t -- TEST MODE
+        Optional.  This will show lots of messages that show what the script 
+        is currently doing.  It includes messages as to the versions of the
+        affected files that are being tagged, etc.  This will also cause the 
+        script to NOT INCREMENT the extension number found in the 
+        $LESDIR/config/ExtensionNumber file and commit it into CVS.  Lastly,
+        certain temporary directories will be kept rather than removed after
+        the script has run.
+        IMPORTANT NOTE: When the script is run in test mode, the script cleans
+        up after itself at the end by removing the tags that were created as 
+        part of the run.  Even if the tag existed prior to running the script,
+        the script will remove any tags that match the ones that it created
+        during the run of the script.
+-r <rollout number> -- ROLLOUT NUMBER
+        Optional.  If this is provided, the script will not attempt to generate
+        a new rollout number from the $LESDIR/config/ExtensionNumber file.
+        It will also not increment this number.  When used in conjunction with
+        the -n parameter, it will just rebuild a rollout from tags and will 
+        not attempt to re-tag all of the files from the head.
+-H -- ALWAYS USE HEAD
+        Optional (recommended). If, while tagging the files affected by the PR, 
+        the scenario comes up that there is a newer version of a file than 
+        what was committed against the PR, the user will be prompted as to 
+        which one they want to use.  This switch tells the script to ALWAYS 
+        distribute the latest version and not to prompt.
+-P -- ALWAYS USE THE PR VERSION
+        If, while tagging the files affected by the PR, the scenario comes up
+        that there is a newer version of a file than what was committed against
+        the PR, the user will be prompted as to which one they want to use.
+        This switch tells the script to ALWAYS distribute the version that 
+        was committed against the PR and not to prompt.
+-B -- BRANCH TAG
+        If you are working on a CVS branch you must specify the branch tag
+        argument to build a rollout against the correct CVS branch.
+<PR Number> -- THE PR NUMBER
+        Required.  This is the PR number that should be built.  If GNATS is
+        available, children of this PR will also be packaged with the PR.
+        If GNATS is not available, the script will attempt to build the 
+        rollout from tags.  The tag value used should be PR-<PR number>.
+
+----- Notes -----
+
+- The script will potentially create two directories in your current 
+  directory.  It will create and remove a directory with the same name as your
+  current module (passed in) if it is generating the rollout number (default
+  behavior).  It will also create a directory named the same as the rollout
+  number that it is generating.  Beware of running this script in a directory 
+  where a directory may exist with the same name as one or both of these as the
+  script will destroy those directories without warning.
+
+- The script assumes that the GNATS server is at HOMEBREW port 1529.  A custom
+  version of the script will be needed if using a different GNATS server.
+  GNATS is NOT required to use this script, but it makes things a lot easier.
+
+- If allowing the script to generate the rollout number, the file 
+  $LESDIR/config/ExtensionNumber must exist and have a value on the first line
+  of the file.  The script supports a prefix followed by a numeric value, or
+  just a numeric value.  Common examples are as follows:
+        - 00000001 (only numeric).
+        - EDS00001 (prefix followed by numeric).
+        - HF-00001 (prefix followed by numeric).
+  The script will auto-increment the numeric portion and check the file into 
+  CVS once it has created a hotfix.  Use the -t option to prevent this
+  from occuring.
+
+- The user still has to perform the actual packaging of the files that are
+  generated by this script.  This is done so that the user can eye up the
+  script that is auto-generated prior to packaging and releasing it, since
+  the script cannot possibly be intelligent enough to get this interdepency-
+  rich environment correct all the time.
+
+- The user that is running this script must have access to the CVS repository
+  that the files will be taken from.  It is also recommended that the user
+  be logged in as a user that has direct CVS acces, rather than granted access
+  through some other user (i.e., CVSROOT = homebrew:/cvs/main rather than 
+  CVSROOT = bgrady@homebrew:/cvs/main).
+
+- CVS must already exist on the client where the extension is being built.
+
+- When building the rollout script, the following are the criteria that are
+  used:
+
+  ADD 
+      this script will never use.  We'll always use REPLACE.
+
+  IMPORTSLDATA filename
+      will import (insert only) any file affected with the .slexp extension
+      using this slimp command: slImp -v -f filename -i
+
+  UPDATESLDATA filename
+      will import (update mode) any file affected with the .uslexp extension
+      using this slimp command: slImp -v -f filename
+
+  LOADDATA
+      any file affected with the .ctl extension
+
+  MBUILD
+      if /cmdsrc/ is in the full path for the file
+
+  REBUILD
+      if /incsrc/, /appsrc/, or /libsrc/ is in the full path for the file
+
+  RECONFIGURE
+      if /config/ or /makefiles/ is in the full path for the file
+
+  REMOVE
+      if the file was removed (only available when connected to GNATS)
+
+  REPLACE
+      uses for all files distributed
+
+  RUNMSQL
+      any file affected with the .msql extension
+
+  RUNSQL
+      any file affected with the .sql, .tbl, .pck, .bdy, .prc, .seq, .idx extensions
+
+  RUNSQLIGNOREERRORS
+      any file affected with the .iesql exension (used to ignore -1403s, etc).
+
+  RUNSCRIPT
+      any file affected with the .pl, .cmd, or .bat extension
+
+- When loading data, the script will assume that the control file will be
+  located in the $LESDIR/db/data/load directory and will be named the same
+  as the data file itself but with a .ctl extension.

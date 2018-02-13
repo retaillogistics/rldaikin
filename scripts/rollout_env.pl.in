@@ -1,0 +1,121 @@
+#!@PERL_PATH@
+#
+use Archive::Tar;
+use Getopt::Std;
+use strict;
+
+my $timestamp = timestamp();
+my $opt_d;
+my $opt_r;
+my $file_name;
+my $file;
+my $dir;
+my $result;
+my $LESDIR;
+my $tar;
+
+#
+# Verify command line arguments
+#
+
+getopts('d:') or usage();
+$opt_d = $Getopt::Std::opt_d if ($Getopt::Std::opt_d);
+
+if ($opt_d)
+{
+    $LESDIR = $opt_d;
+}
+else
+{
+    if ($ENV{LESDIR})
+    {
+        $LESDIR = $ENV{LESDIR};
+    }
+    else
+    {
+        print STDERR "error: No \$LESDIR specified!\n";
+        print STDERR "error: Please use the `-d' option\n";
+        print STDERR "error: or set the LESDIR environment variable.\n\n";
+        usage();
+    }
+}
+
+$file_name = $ARGV[0];
+if ($file_name eq "")
+{
+    print STDERR "error: Archive file name not specified!\n";
+    usage();
+}
+
+if (!(-f $file_name))
+{
+    print STDERR "error: can not find archive file: $file_name\n";
+    usage();
+}
+
+print "This program will install the archive file: $file_name\n";
+print "to: $LESDIR, existing directories will be backed up\n";
+print "\nAre you sure you want to do this? ";
+read (STDIN,$result,1);
+
+if ( uc(substr($result, 0, 1)) eq "Y" )
+{
+    #
+    # backup directories that the tar file will over write
+    # config makefiles samples scripts src tools
+
+    foreach $dir ("config","makefiles","samples","scripts","src","tools")
+    {
+        print "$LESDIR\\$dir \t-->$LESDIR\\$dir-$timestamp\n";
+        rename ("$LESDIR\\$dir","$LESDIR\\$dir-$timestamp") or exit(
+               print STDERR "error: cout not rename $LESDIR\\$dir to " .
+                            "$LESDIR\\$dir-$timestamp\n");
+    }
+
+    $tar = Archive::Tar->new($file_name,1);
+
+    foreach $file ($tar->list_files)
+    {
+        print "$file\n";
+        $tar->extract($file);
+    }
+}
+else
+{
+    print "rollout aborted.\n";
+}
+
+# ------------------------------------------------------------------------------
+#
+# FUNCTION: usage
+#
+# PURPOSE: Display program usage
+#
+# ------------------------------------------------------------------------------
+
+sub usage
+{
+   print STDERR "usage: perl rollout_env.pl [-d <LESDIR>] <archive file>\n";
+   print STDERR " -d <LESDIR> - Overrides \$LESDIR\n";
+   exit(-1);
+}
+
+# ------------------------------------------------------------------------------
+#
+# FUNCTION: timestamp
+#
+# PURPOSE:  Get the current time in yyyymmdd-hh24miss format.
+#
+# ------------------------------------------------------------------------------
+
+sub timestamp
+{
+    my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime;
+
+    sprintf("%04d%02d%02d-%02d%02d%02d", $year+1900,
+                                              $mon+1,
+                                              $mday,
+                                              $hour,
+                                              $min,
+                                              $sec);
+}

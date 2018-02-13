@@ -1,0 +1,190 @@
+#!@PERL_PATH@
+#
+use Archive::Tar;
+use File::Basename;
+use Getopt::Std;
+use Cwd;
+use strict;
+
+my $timestamp = timestamp();
+
+my $cmd;
+my ($opt_d,$opt_r);
+my ($cvs_tag,$cvs_root,$module_name);
+
+#
+# Verify command line arguments
+#
+
+getopts('d:r:') or usage();
+$opt_d = $Getopt::Std::opt_d if ($Getopt::Std::opt_d);
+$opt_r = $Getopt::Std::opt_r if ($Getopt::Std::opt_r);
+
+if ($opt_d)
+{
+    $cvs_root = $opt_d;
+}
+else
+{
+    if ($ENV{CVSROOT})
+    {
+        $cvs_root = $ENV{CVSROOT};
+    }
+    else
+    {
+        print STDERR "error: No CVSROOT specified!\n";
+        print STDERR "error: Please use the `-d' option\n";
+        print STDERR "error: or set the CVSROOT environment variable.\n\n";
+        usage();
+    }  
+}
+
+if ($opt_r)
+{
+    $cvs_tag     = $opt_r;
+}
+else
+{
+    $cvs_tag     = "HEAD";
+}
+
+$module_name = $ARGV[0];
+
+#
+# rename existing LES directory
+#
+if ( -x "les" )
+{
+   print STDERR "warning: backing up existing LES directory to les-$timestamp\n";
+   rename("les","les-$timestamp") or print STDERR "error: could not back up LES directory to les-$timestamp\n";
+}
+
+#
+# checkout new LES directory from cvs
+#
+$cmd="cvs -d $cvs_root export -r $cvs_tag -d les $module_name";
+print "$cmd\n";
+system($cmd);
+
+#
+# create an archive of the  LES directory
+#
+create_archive($cvs_tag);
+
+# ------------------------------------------------------------------------------
+#
+# FUNCTION: usage
+#
+# PURPOSE: Display program usage
+#
+# ------------------------------------------------------------------------------
+
+sub usage
+{
+   print STDERR "usage: perl pkg_env.pl -d <cvs root> -r <cvs tag> <cvs module>\n";
+   print STDERR " -d <cvs root> - Overrides \$CVSROOT as the root of the CVS tree.\n";
+   print STDERR " -r <cvs tag>  - Tag to export from.\n";
+   exit(-1);
+}
+
+# ------------------------------------------------------------------------------
+#
+# FUNCTION: timestamp
+#
+# PURPOSE:  Get the current time in yyyymmdd-hh24miss format.
+#
+# ------------------------------------------------------------------------------
+
+sub timestamp
+{
+    my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime;
+  
+    sprintf("%04d%02d%02d-%02d%02d%02d", $year+1900,
+                                              $mon+1,
+                                              $mday,
+                                              $hour,
+                                              $min,
+                                              $sec);
+}
+
+# ------------------------------------------------------------------------------
+#
+# FUNCTION: create_archive 
+#
+# PURPOSE: Create a GZIP-ed tar file of a cvs tree
+#
+# ------------------------------------------------------------------------------
+
+sub create_archive
+{
+   my($cvs_tag) = @_;
+   my $tar;
+   my $filename;
+   my $timestamp;
+
+   if ($cvs_tag eq "HEAD")
+   {   
+       $timestamp = timestamp(); 
+       $filename = "les-$cvs_tag-$timestamp.tgz";
+   }
+   else
+   {
+       $filename = "les-$cvs_tag.tgz";
+   }
+
+   $tar = Archive::Tar->new();
+   add_archive_files($tar,"les");
+   $tar->write($filename,1);
+}
+
+# ------------------------------------------------------------------------------
+#
+# FUNCTION: add_archive_files
+#
+# PURPOSE: recurse through a directory structure adding files and directories
+#          to the tar file
+#
+# ------------------------------------------------------------------------------
+
+sub add_archive_files
+{
+   my($tar,$file) = @_;
+
+   my($curdir,@dir_list,$dir_name);
+
+   $curdir = getcwd();
+
+   if ( -d $curdir."/".$file) # check if directory
+   {
+      if (
+         basename($file) ne "."   &&
+         basename($file) ne ".."  &&
+         basename($file) ne "CVS"
+         )
+      {
+          print "adding dir : $file\n";
+          $tar->add_files($file);
+     
+          opendir(DIR, "$curdir/$file");
+          @dir_list = readdir(DIR);
+          close(DIR);
+
+          foreach $dir_name (@dir_list)
+          {
+              if (
+                 basename($file) ne "."   &&
+                 basename($file) ne ".."  &&
+                 basename($file) ne "CVS"
+                 )
+              {
+                  add_archive_files($tar,$file."/".$dir_name);
+              }
+          }
+      }
+   }
+   else
+   {
+      print "adding file: $file\n";
+      $tar->add_files($file);
+   }
+}
